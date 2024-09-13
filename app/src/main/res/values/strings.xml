@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">QRCodeSandServer</string>
+    <string name="title_activity_main">Сканер</string>
+    <string name="host_port">Host:port</string>
+    <string name="infoScan">Вы можете сканировать qr-Code и отправлять его по нужному ip адресу в нужный порт! Для этого необхадимо вписать в формате host:port в поле и отсканить код!</string>
+
+</resources>
