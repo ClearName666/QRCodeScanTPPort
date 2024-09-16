@@ -12,16 +12,23 @@ import android.view.View
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.SocketTimeoutException
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    companion object {
+        const val DEFAULT_HOST_PORT: String = "192.168.1.14:6067"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+
+        binding.inputHostPort.setText(DEFAULT_HOST_PORT)
 
         // Автоматически запускаем сканер при открытии активности
 
@@ -76,13 +83,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDialog(content: String) {
-        // Показываем диалог с результатом сканирования
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("QR-код отсканирован")
-        builder.setMessage(content)
-        builder.setPositiveButton("OK", null)
-        builder.show()
-
         // отправка данных по порту
         val validing = Validing()
         if (validing.isValidIpAddressPort(binding.inputHostPort.text.toString())) {
@@ -90,39 +90,58 @@ class MainActivity : AppCompatActivity() {
                 sendUDPRequest(
                     binding.inputHostPort.text.toString().substringBefore(":"),
                     binding.inputHostPort.text.toString().substringAfter(":").toInt(),
-                    content
+                    content,
+                    true
                 )
             } catch (_: Exception) {}
         }
     }
 
-    // отправка в порт
     private fun sendUDPRequest(host: String, port: Int, message: String, responseFlag: Boolean = false) {
         Thread {
             val socket = DatagramSocket()
-            val address = InetAddress.getByName(host)
-            val buf = message.toByteArray()
-            val packet = DatagramPacket(buf, buf.size, address, port)
-
             try {
-                socket.send(packet)  // Отправляем пакет
-            } catch (_: Exception) {}
+                val address = InetAddress.getByName(host)
+                val buf = message.toByteArray()
+                val packet = DatagramPacket(buf, buf.size, address, port)
 
-            // если нужно получить ответ
-            if (responseFlag) {
-                try {
-                    // Получение ответа
-                    val responseBuf = ByteArray(1024)
-                    val responsePacket = DatagramPacket(responseBuf, responseBuf.size)
-                    socket.receive(responsePacket)
+                // Отправляем пакет
+                socket.send(packet)
+                Log.d("UDP", "Пакет отправлен на $host:$port")
 
-                    val response = String(responsePacket.data, 0, responsePacket.length)
-                    Log.d("frameDataMy", response)
-                } catch (_: Exception) {}
+                // если нужно получить ответ
+                if (responseFlag) {
+                    // Устанавливаем тайм-аут на получение ответа (например, 5 секунд)
+                    socket.soTimeout = 1000
+
+                    try {
+                        // Получение ответа
+                        val responseBuf = ByteArray(1024)
+                        val responsePacket = DatagramPacket(responseBuf, responseBuf.size)
+                        socket.receive(responsePacket)
+
+                        val response = String(responsePacket.data, 0, responsePacket.length)
+                        runOnUiThread { showDialogText("Успешно", "$message отправлен в порт") }
+
+
+                    } catch (e: SocketTimeoutException) {
+                        Log.d("UDP", "Ответ не получен: время ожидания истекло")
+                        runOnUiThread { showDialogText("Ошибка", "Время ожидания ответа истекло") }
+                    } catch (e: Exception) {
+                        Log.e("UDP", "Ошибка при получении ответа: ${e.message}")
+                        runOnUiThread { showDialogText("Ошибка", "Произошла ошибка при получении ответа") }
+                    }
+                } else {
+                    runOnUiThread { showDialogText("Успешно", "$message отправлен в порт") }
+                }
+            } catch (e: Exception) {
+                Log.e("UDP", "Ошибка при отправке пакета: ${e.message}")
+                runOnUiThread { showDialogText("Ошибка", "Похоже что порт занят, или введен несуществующий ip адрес!") }
+            } finally {
+                socket.close()  // Закрываем сокет в блоке finally, чтобы гарантированно закрыть его
+                Log.d("UDP", "Сокет закрыт")
             }
-
-            socket.close()  // Закрываем сокет
         }.start()
-
     }
+
 }
